@@ -1,7 +1,9 @@
 import math
+import os
 
 def fragmentar_archivo(ruta_archivo, tamaño_mb, carpeta_salida):
     tamaño_bytes = tamaño_mb * 1024 * 1024
+    os.makedirs(carpeta_salida, exist_ok=True)
     with open(ruta_archivo, 'rb') as f:
         i = 0
         while True:

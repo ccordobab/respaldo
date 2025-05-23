@@ -4,8 +4,7 @@ from backup import file_collector, compressor, encryptor, fragmenter
 
 # 1. Seleccionar carpetas
 carpetas = [
-    r"C:\Users\Camilo\Documents\Importante",
-    r"D:\Universidad\Proyectos"
+    r"C:\carpetaAComprimir",
 ]
 
 # 2. Recolectar archivos
