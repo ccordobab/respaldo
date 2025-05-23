@@ -1,0 +1,15 @@
+# requirements.txt
+# Dependencias principales
+pyzipper==0.3.6       # Para compresión ZIP con encriptación
+dask==2023.8.1        # Para paralelismo
+cryptography==41.0.3  # Para encriptación AES
+
+# Dependencias adicionales de soporte
+tqdm==4.66.1          # Para barras de progreso
+python-dotenv==1.0.0  # Para manejo de variables de entorno
+psutil==5.9.5         # Para monitoreo de recursos
+
+# Dependencias de desarrollo (opcionales)
+pytest==7.4.0         # Para testing
+black==23.7.0         # Para formateo de código
+flake8==6.0.0         # Para linting
