@@ -31,6 +31,24 @@ py .\main.py
    - Provide encryption key if needed
    - Click "Restore Backup"
 
+## Architecture Overview
+This project is a modular backup and restore application with a Tkinter-based GUI. Its main components are:
+
+- *GUI (gui/app.py)*: Lets users select folders/files, configure options (encryption, fragmentation, cloud upload), and start backup/restore operations.
+- *Backup Module (backup/create.py, compressor.py)*: Compresses files (using Dask for parallelism), optionally encrypts and fragments the backup.
+- *Restore Module (backup/restore.py)*: Restores backups, handling decryption and defragmentation if needed.
+- *Cloud Integration (backup/cloud/google_drive.py)*: Uploads backups to Google Drive.
+The app is designed for easy maintenance and extension, with each feature in its own module.
+
+## Why Python?
+Python was chosen for this project because it offers:
+
+- Cross-platform support: Python runs on Windows, macOS, and Linux, making the app accessible to many users.
+- Rich ecosystem: Libraries like Tkinter, Dask, zipfile, and cryptography simplify GUI development, parallel processing, compression, and encryption.
+- Rapid development: Python’s clear syntax and dynamic typing allow for fast prototyping and easy maintenance.
+- Strong community: Extensive documentation and community support make it easier to solve problems and extend functionality.
+Overall, Python enables quick development of robust, user-friendly backup tools with advanced features. Also, it was an opportunity to expand the knowledge on python tools.
+
 ## Parallel Processing with Dask
 
 This implementation uses Dask for parallel compression of files during backup operations. Here's a detailed explanation:
@@ -89,7 +107,15 @@ The system integrates with Google Drive for cloud backup storage using the offic
 - Configure OAuth consent screen
 - Download credentials.json to your project's secure config directory
 
-### Team Members
+## Storage on Disk
+
+The application allows users to choose a specific disk drive (such as C: or D:\) as the backup destination. When the user clicks the "Select Disk..." button in the GUI, the app:
+1. Detects all available drives on the system using Windows APIs.
+2. Displays a list of drives in a popup window.
+3. The user selects a drive, and its path is automatically set as the backup destination.
+This feature makes it easy to save backups directly to external drives, USB sticks, or other partitions, improving flexibility and data safety.
+
+## Team Members
 This project was made by Paulina Cerón, Camilo Córdoba and Sara Valentina Cortes.
 
 You can find the explanatory video [HERE](https://eafit-my.sharepoint.com/:v:/g/personal/pceronm_eafit_edu_co/EZBvRZwr0ApEuAl-XLwknbUBLbwQTF39aGMYifFNp0ZYKg?e=h3C3ZG&nav=eyJyZWZlcnJhbEluZm8iOnsicmVmZXJyYWxBcHAiOiJTdHJlYW1XZWJBcHAiLCJyZWZlcnJhbFZpZXciOiJTaGFyZURpYWxvZy1MaW5rIiwicmVmZXJyYWxBcHBQbGF0Zm9ybSI6IldlYiIsInJlZmVycmFsTW9kZSI6InZpZXcifX0%3D)
