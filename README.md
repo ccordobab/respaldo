@@ -66,3 +66,25 @@ The backup system employs the industry-standard DEFLATE compression algorithm th
    - Native implementation requiring no additional dependencies
    - Supports ZIP64 for large files (>4GB)
    - Preserves file metadata and directory structure
+
+## Google Drive Integration
+
+The system integrates with Google Drive for cloud backup storage using the official Google Drive API.
+
+### How It Works:
+1. Authentication
+   - Uses OAuth 2.0 for secure access
+   - Requires credentials.json from Google Cloud Platform
+   - Grants limited access only to files created by the application
+2. Storage Process
+   - Encrypted backups are uploaded as single files or split fragments
+   - Maintains original folder structure when restored
+   - Uses efficient resumable uploads for large files
+3. Security
+   - Operates under drive.file scope (access only to created files)
+   - Encryption occurs locally before cloud transfer
+   - Credentials are never stored in plain text
+### Setup Requirements:
+- Enable Google Drive API in Google Cloud Console
+- Configure OAuth consent screen
+- Download credentials.json to your project's secure config directory
