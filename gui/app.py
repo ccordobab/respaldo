@@ -174,7 +174,6 @@ class BackupApp(tk.Toplevel):
                 mensaje = ""
                 if isinstance(resultado, dict):
                     if resultado.get('success', False):
-                        #mensaje = f"¡Respaldo creado con éxito!\n\nArchivo principal:\n{resultado.get('archivo_principal', '')}"
                         mensajes.append(f"Respaldo de {origen} creado con éxito:\n{resultado.get('archivo_principal', '')}")
                         # Subida manual a Google Drive
                         if subir_a_cloud and resultado.get('archivo_principal'):
@@ -205,9 +204,7 @@ class BackupApp(tk.Toplevel):
                             except Exception as e:
                                 mensaje += f"\n\nGoogle Drive: Error al subir - {str(e)}"
                         
-                       # messagebox.showinfo("Éxito", mensaje)
                     else:
-                        #messagebox.showerror("Error", resultado.get('error', 'Error desconocido'))
                         mensajes.append(f"Error al crear respaldo de {origen}:\n{resultado.get('error', 'Error desconocido')}")
                 else:
                     messagebox.showinfo("Éxito", f"¡Respaldo creado con éxito en:\n{resultado}")
