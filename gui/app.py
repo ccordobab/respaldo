@@ -28,7 +28,7 @@ class BackupApp(tk.Toplevel):
         self.fragmentar_var = tk.BooleanVar(value=True)
         self.tamano_fragmento_var = tk.IntVar(value=100)
         self.cloud_upload_var = tk.BooleanVar(value=False)
-
+        self.origenes = []
         # Frame principal para mejor organización
         main_frame = tk.Frame(self)
         main_frame.pack(padx=10, pady=10, fill=tk.BOTH, expand=True)
@@ -94,7 +94,11 @@ class BackupApp(tk.Toplevel):
     def elegir_origen(self):
         carpeta = filedialog.askdirectory(title="Seleccionar carpeta a respaldar")
         if carpeta:
-            self.origen_var.set(carpeta)
+            if carpeta not in self.origenes:
+                self.origenes.append(carpeta)
+                # Mostrar todas las carpetas seleccionadas, separadas por ;
+                self.origen_var.set("; ".join(self.origenes))
+
 
     def elegir_destino(self):
         carpeta = filedialog.askdirectory(title="Seleccionar carpeta destino")
@@ -114,6 +118,7 @@ class BackupApp(tk.Toplevel):
 
     def crear_respaldo(self):  # Este es el método de la clase
         origen = self.origen_var.get()
+        origenes = self.origenes
         destino = self.destino_var.get()
         clave = self.clave_var.get() or None
         encriptar = self.encriptar_var.get()
@@ -121,61 +126,65 @@ class BackupApp(tk.Toplevel):
         tamano = self.tamano_fragmento_var.get()
         subir_a_cloud = self.cloud_upload_var.get()
 
-        if not origen or not destino:
+        if not origenes or not destino:
             messagebox.showerror("Error", "Debes seleccionar carpeta origen y destino.")
             return
 
         try:
             # Llamamos a la función del backend con el nombre renombrado
-            resultado = crear_respaldo_backend(
-                origen,  # Primer parámetro posicional (carpeta_a_resguardar)
-                destino, # Segundo parámetro posicional (carpeta_salida)
-                encriptar=encriptar,
-                fragmentar=fragmentar,
-                tamano_fragmento_mb=tamano,
-                clave_path=clave,
-                upload_to_cloud=False
-            )
-
-            if isinstance(resultado, dict):
-                if resultado.get('success', False):
-                    mensaje = f"¡Respaldo creado con éxito!\n\nArchivo principal:\n{resultado.get('archivo_principal', '')}"
-                    
-                    # Subida manual a Google Drive
-                    if subir_a_cloud and resultado.get('archivo_principal'):
-                        try:
-                            drive = GoogleDriveProvider()
-                            if drive.authenticate():
-                                archivo_path = Path(resultado['archivo_principal'])
-                                
-                                media = MediaFileUpload(
-                                    str(archivo_path),
-                                    mimetype='application/zip',
-                                    resumable=True
-                                )
-                                
-                                file_metadata = {
-                                    'name': archivo_path.name,
-                                    'mimeType': 'application/zip'
-                                }
-                                drive.service.files().create(
-                                    body=file_metadata,
-                                    media_body=media,
-                                    fields='id'
-                                ).execute()
-                                
-                                mensaje += "\n\nGoogle Drive: Subida exitosa"
-                            else:
-                                mensaje += "\n\nGoogle Drive: Error de autenticación"
-                        except Exception as e:
-                            mensaje += f"\n\nGoogle Drive: Error al subir - {str(e)}"
-                    
-                    messagebox.showinfo("Éxito", mensaje)
+            mensajes = []
+            for origen in origenes:
+                resultado = crear_respaldo_backend(
+                    origen,  # Primer parámetro posicional (carpeta_a_resguardar)
+                    destino, # Segundo parámetro posicional (carpeta_salida)
+                    encriptar=encriptar,
+                    fragmentar=fragmentar,
+                    tamano_fragmento_mb=tamano,
+                    clave_path=clave,
+                    upload_to_cloud=False
+                )
+                mensaje = ""
+                if isinstance(resultado, dict):
+                    if resultado.get('success', False):
+                        #mensaje = f"¡Respaldo creado con éxito!\n\nArchivo principal:\n{resultado.get('archivo_principal', '')}"
+                        mensajes.append(f"Respaldo de {origen} creado con éxito:\n{resultado.get('archivo_principal', '')}")
+                        # Subida manual a Google Drive
+                        if subir_a_cloud and resultado.get('archivo_principal'):
+                            try:
+                                drive = GoogleDriveProvider()
+                                if drive.authenticate():
+                                    archivo_path = Path(resultado['archivo_principal'])
+                                    
+                                    media = MediaFileUpload(
+                                        str(archivo_path),
+                                        mimetype='application/zip',
+                                        resumable=True
+                                    )
+                                    
+                                    file_metadata = {
+                                        'name': archivo_path.name,
+                                        'mimeType': 'application/zip'
+                                    }
+                                    drive.service.files().create(
+                                        body=file_metadata,
+                                        media_body=media,
+                                        fields='id'
+                                    ).execute()
+                                    
+                                    mensaje += "\n\nGoogle Drive: Subida exitosa"
+                                else:
+                                    mensaje += "\n\nGoogle Drive: Error de autenticación"
+                            except Exception as e:
+                                mensaje += f"\n\nGoogle Drive: Error al subir - {str(e)}"
+                        
+                       # messagebox.showinfo("Éxito", mensaje)
+                    else:
+                        #messagebox.showerror("Error", resultado.get('error', 'Error desconocido'))
+                        mensajes.append(f"Error al crear respaldo de {origen}:\n{resultado.get('error', 'Error desconocido')}")
                 else:
-                    messagebox.showerror("Error", resultado.get('error', 'Error desconocido'))
-            else:
-                messagebox.showinfo("Éxito", f"¡Respaldo creado con éxito en:\n{resultado}")
-
+                    messagebox.showinfo("Éxito", f"¡Respaldo creado con éxito en:\n{resultado}")
+            
+            messagebox.showinfo("Resultado", "\n\n".join(mensajes))
         except Exception as e:
             messagebox.showerror("Error", f"Falló la creación del respaldo:\n{str(e)}")
 
