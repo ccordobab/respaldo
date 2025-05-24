@@ -1,49 +1,95 @@
 import tkinter as tk
 from tkinter import filedialog, messagebox
 from backup.restore import restaurar_respaldo
+from tkinter import ttk
 import os
-from backup.create import crear_respaldo
+from pathlib import Path 
+from gui.cloud_auth_window import CloudAuthWindow
+from backup.cloud.google_drive import GoogleDriveProvider
+from backup.create import crear_respaldo as crear_respaldo_backend
+from googleapiclient.http import MediaFileUpload
+from pathlib import Path
+import sys
+from io import StringIO
 
 class BackupApp(tk.Toplevel):
     def __init__(self, parent):
         super().__init__(parent)
         self.title("Crear Respaldo")
-        self.geometry("600x400")
-        self.transient(parent)  # Establece relación con la ventana principal
-        self.grab_set()  # Hace que la ventana sea modal
+        self.geometry("600x450")  # Aumentado para mejor visualización
+        self.transient(parent)
+        self.grab_set()
 
+        # Variables de control
         self.origen_var = tk.StringVar()
         self.destino_var = tk.StringVar()
         self.clave_var = tk.StringVar()
         self.encriptar_var = tk.BooleanVar(value=True)
         self.fragmentar_var = tk.BooleanVar(value=True)
         self.tamano_fragmento_var = tk.IntVar(value=100)
+        self.cloud_upload_var = tk.BooleanVar(value=False)
+
+        # Frame principal para mejor organización
+        main_frame = tk.Frame(self)
+        main_frame.pack(padx=10, pady=10, fill=tk.BOTH, expand=True)
+
+        # Configuración del grid
+        main_frame.columnconfigure(0, weight=1)
+        main_frame.columnconfigure(1, weight=3)
+        main_frame.columnconfigure(2, weight=1)
 
         # Origen carpeta
-        tk.Label(self, text="📂 Carpeta a respaldar").pack(pady=5)
-        tk.Entry(self, textvariable=self.origen_var, width=60).pack()
-        tk.Button(self, text="Seleccionar carpeta...", command=self.elegir_origen).pack()
+        tk.Label(main_frame, text="Carpeta a respaldar:").grid(row=0, column=0, sticky="w", pady=5)
+        tk.Entry(main_frame, textvariable=self.origen_var, width=50).grid(row=0, column=1, sticky="ew", padx=5)
+        tk.Button(main_frame, text="Seleccionar...", command=self.elegir_origen).grid(row=0, column=2, padx=5)
 
         # Destino carpeta
-        tk.Label(self, text="📁 Carpeta destino para guardar respaldo").pack(pady=5)
-        tk.Entry(self, textvariable=self.destino_var, width=60).pack()
-        tk.Button(self, text="Seleccionar carpeta destino...", command=self.elegir_destino).pack()
+        tk.Label(main_frame, text="Carpeta destino:").grid(row=1, column=0, sticky="w", pady=5)
+        tk.Entry(main_frame, textvariable=self.destino_var, width=50).grid(row=1, column=1, sticky="ew", padx=5)
+        tk.Button(main_frame, text="Seleccionar...", command=self.elegir_destino).grid(row=1, column=2, padx=5)
 
         # Clave (opcional)
-        tk.Label(self, text="🔐 Archivo de clave (opcional)").pack(pady=5)
-        tk.Entry(self, textvariable=self.clave_var, width=60).pack()
-        tk.Button(self, text="Seleccionar clave...", command=self.elegir_clave).pack()
+        tk.Label(main_frame, text="Archivo de clave:").grid(row=2, column=0, sticky="w", pady=5)
+        tk.Entry(main_frame, textvariable=self.clave_var, width=50).grid(row=2, column=1, sticky="ew", padx=5)
+        tk.Button(main_frame, text="Seleccionar...", command=self.elegir_clave).grid(row=2, column=2, padx=5)
 
-        # Encriptar checkbox
-        tk.Checkbutton(self, text="Encriptar respaldo", variable=self.encriptar_var).pack(pady=5)
+        # Opciones de respaldo
+        options_frame = tk.LabelFrame(main_frame, text="Opciones de Respaldo")
+        options_frame.grid(row=3, column=0, columnspan=3, sticky="ew", pady=10, padx=5)
+        
+        tk.Checkbutton(options_frame, text="Encriptar respaldo", variable=self.encriptar_var).pack(anchor="w")
+        tk.Checkbutton(options_frame, text="Fragmentar archivo", variable=self.fragmentar_var).pack(anchor="w")
+        
+        tk.Label(options_frame, text="Tamaño fragmentos (MB):").pack(anchor="w")
+        tk.Entry(options_frame, textvariable=self.tamano_fragmento_var, width=10).pack(anchor="w")
 
-        # Fragmentar checkbox y tamaño
-        tk.Checkbutton(self, text="Fragmentar archivo", variable=self.fragmentar_var).pack()
-        tk.Label(self, text="Tamaño fragmentos (MB):").pack()
-        tk.Entry(self, textvariable=self.tamano_fragmento_var, width=10).pack()
+        # Opciones de nube
+        cloud_frame = tk.LabelFrame(main_frame, text="Opciones de Nube")
+        cloud_frame.grid(row=4, column=0, columnspan=3, sticky="ew", pady=10, padx=5)
+        
+        tk.Button(
+            cloud_frame,
+            text="Configurar Google Drive",
+            command=self.open_cloud_auth,
+            bg="#4285F4",
+            fg="white"
+        ).pack(pady=5, fill=tk.X)
+        
+        tk.Checkbutton(
+            cloud_frame,
+            text="Subir a Google Drive después de crear",
+            variable=self.cloud_upload_var
+        ).pack(anchor="w")
 
         # Botón principal
-        tk.Button(self, text="💾 Crear respaldo", command=self.crear_respaldo, bg="green", fg="white").pack(pady=20)
+        tk.Button(
+            main_frame,
+            text="Crear Respaldo",
+            command=self.crear_respaldo,
+            bg="green",
+            fg="white",
+            height=2
+        ).grid(row=5, column=0, columnspan=3, pady=10, sticky="ew")
 
     def elegir_origen(self):
         carpeta = filedialog.askdirectory(title="Seleccionar carpeta a respaldar")
@@ -56,84 +102,146 @@ class BackupApp(tk.Toplevel):
             self.destino_var.set(carpeta)
 
     def elegir_clave(self):
-        clave = filedialog.askopenfilename(filetypes=[("Key files", "*.key"), ("Todos", "*.*")])
+        clave = filedialog.askopenfilename(
+            title="Seleccionar archivo de clave",
+            filetypes=[("Key files", "*.key"), ("Todos los archivos", "*.*")]
+        )
         if clave:
             self.clave_var.set(clave)
 
-    def crear_respaldo(self):
+    def open_cloud_auth(self):
+        CloudAuthWindow(self)
+
+    def crear_respaldo(self):  # Este es el método de la clase
         origen = self.origen_var.get()
         destino = self.destino_var.get()
         clave = self.clave_var.get() or None
         encriptar = self.encriptar_var.get()
         fragmentar = self.fragmentar_var.get()
         tamano = self.tamano_fragmento_var.get()
+        subir_a_cloud = self.cloud_upload_var.get()
 
         if not origen or not destino:
             messagebox.showerror("Error", "Debes seleccionar carpeta origen y destino.")
             return
 
         try:
-            ruta_final = crear_respaldo(
-                carpeta_a_resguardar=origen,
-                carpeta_salida=destino,
+            # Llamamos a la función del backend con el nombre renombrado
+            resultado = crear_respaldo_backend(
+                origen,  # Primer parámetro posicional (carpeta_a_resguardar)
+                destino, # Segundo parámetro posicional (carpeta_salida)
                 encriptar=encriptar,
                 fragmentar=fragmentar,
                 tamano_fragmento_mb=tamano,
-                clave_path=clave
+                clave_path=clave,
+                upload_to_cloud=False
             )
-            messagebox.showinfo("Éxito", f"¡Respaldo creado con éxito en:\n{ruta_final}")
+
+            if isinstance(resultado, dict):
+                if resultado.get('success', False):
+                    mensaje = f"¡Respaldo creado con éxito!\n\nArchivo principal:\n{resultado.get('archivo_principal', '')}"
+                    
+                    # Subida manual a Google Drive
+                    if subir_a_cloud and resultado.get('archivo_principal'):
+                        try:
+                            drive = GoogleDriveProvider()
+                            if drive.authenticate():
+                                archivo_path = Path(resultado['archivo_principal'])
+                                
+                                media = MediaFileUpload(
+                                    str(archivo_path),
+                                    mimetype='application/zip',
+                                    resumable=True
+                                )
+                                
+                                file_metadata = {
+                                    'name': archivo_path.name,
+                                    'mimeType': 'application/zip'
+                                }
+                                drive.service.files().create(
+                                    body=file_metadata,
+                                    media_body=media,
+                                    fields='id'
+                                ).execute()
+                                
+                                mensaje += "\n\nGoogle Drive: Subida exitosa"
+                            else:
+                                mensaje += "\n\nGoogle Drive: Error de autenticación"
+                        except Exception as e:
+                            mensaje += f"\n\nGoogle Drive: Error al subir - {str(e)}"
+                    
+                    messagebox.showinfo("Éxito", mensaje)
+                else:
+                    messagebox.showerror("Error", resultado.get('error', 'Error desconocido'))
+            else:
+                messagebox.showinfo("Éxito", f"¡Respaldo creado con éxito en:\n{resultado}")
+
         except Exception as e:
             messagebox.showerror("Error", f"Falló la creación del respaldo:\n{str(e)}")
-
 
 class RestoreApp(tk.Toplevel):
     def __init__(self, parent):
         super().__init__(parent)
         self.title("Restaurar Respaldo")
-        self.geometry("600x350")
-        self.transient(parent)  # Establece relación con la ventana principal
-        self.grab_set()  # Hace que la ventana sea modal
+        self.geometry("600x400")
+        self.transient(parent)
+        self.grab_set()
 
+        # Variables de control
         self.origen_var = tk.StringVar()
         self.destino_var = tk.StringVar()
         self.clave_var = tk.StringVar()
         self.es_fragmentado = tk.BooleanVar()
 
+        # Frame principal
+        main_frame = tk.Frame(self)
+        main_frame.pack(padx=10, pady=10, fill=tk.BOTH, expand=True)
+
         # Origen
-        tk.Label(self, text="📂 Carpeta de fragmentos o archivo .zip/.zip.enc").pack(pady=5)
-        tk.Entry(self, textvariable=self.origen_var, width=60).pack()
-        
-        # Usar solo un botón para seleccionar tanto archivo como carpeta
-        tk.Button(self, text="Seleccionar origen...", command=self.elegir_origen).pack(pady=5)
+        tk.Label(main_frame, text="Origen del respaldo:").grid(row=0, column=0, sticky="w", pady=5)
+        tk.Entry(main_frame, textvariable=self.origen_var, width=50).grid(row=0, column=1, sticky="ew", padx=5)
+        tk.Button(main_frame, text="Seleccionar...", command=self.elegir_origen).grid(row=0, column=2, padx=5)
 
         # Destino
-        tk.Label(self, text="📁 Carpeta de destino para restauración").pack(pady=5)
-        tk.Entry(self, textvariable=self.destino_var, width=60).pack()
-        tk.Button(self, text="Seleccionar...", command=self.elegir_destino).pack()
+        tk.Label(main_frame, text="Carpeta destino:").grid(row=1, column=0, sticky="w", pady=5)
+        tk.Entry(main_frame, textvariable=self.destino_var, width=50).grid(row=1, column=1, sticky="ew", padx=5)
+        tk.Button(main_frame, text="Seleccionar...", command=self.elegir_destino).grid(row=1, column=2, padx=5)
 
-        # Clave (opcional)
-        tk.Label(self, text="🔐 Archivo de clave (opcional)").pack(pady=5)
-        tk.Entry(self, textvariable=self.clave_var, width=60).pack()
-        tk.Button(self, text="Seleccionar clave...", command=self.elegir_clave).pack()
+        # Clave
+        tk.Label(main_frame, text="Archivo de clave:").grid(row=2, column=0, sticky="w", pady=5)
+        tk.Entry(main_frame, textvariable=self.clave_var, width=50).grid(row=2, column=1, sticky="ew", padx=5)
+        tk.Button(main_frame, text="Seleccionar...", command=self.elegir_clave).grid(row=2, column=2, padx=5)
 
-        # Fragmentado
-        tk.Checkbutton(self, text="¿Respaldo fragmentado (.bin)?", variable=self.es_fragmentado).pack(pady=10)
+        # Opciones
+        options_frame = tk.LabelFrame(main_frame, text="Opciones de Restauración")
+        options_frame.grid(row=3, column=0, columnspan=3, sticky="ew", pady=10, padx=5)
+        
+        tk.Checkbutton(
+            options_frame, 
+            text="Respaldo fragmentado", 
+            variable=self.es_fragmentado
+        ).pack(anchor="w")
 
         # Botón principal
-        tk.Button(self, text="🛠 Restaurar Respaldo", command=self.restaurar, bg="blue", fg="white").pack(pady=20)
+        tk.Button(
+            main_frame,
+            text="Restaurar Respaldo",
+            command=self.restaurar,
+            bg="blue",
+            fg="white",
+            height=2
+        ).grid(row=4, column=0, columnspan=3, pady=10, sticky="ew")
 
     def elegir_origen(self):
         # Primero intentamos seleccionar un archivo
         archivo = filedialog.askopenfilename(
             title="Seleccionar archivo de respaldo", 
-            filetypes=[("ZIP files", "*.zip *.zip.enc"), ("Todos", "*.*")]
+            filetypes=[("Archivos de respaldo", "*.zip *.zip.enc *.bin"), ("Todos", "*.*")]
         )
         
         # Si no se seleccionó archivo, intentamos seleccionar carpeta
         if not archivo:
-            archivo = filedialog.askdirectory(
-                title="Seleccionar carpeta con fragmentos"
-            )
+            archivo = filedialog.askdirectory(title="Seleccionar carpeta con fragmentos")
         
         if archivo:
             self.origen_var.set(archivo)
@@ -159,7 +267,7 @@ class RestoreApp(tk.Toplevel):
     def elegir_clave(self):
         clave = filedialog.askopenfilename(
             title="Seleccionar archivo de clave",
-            filetypes=[("Key files", "*.key"), ("Todos", "*.*")]
+            filetypes=[("Archivos de clave", "*.key"), ("Todos", "*.*")]
         )
         if clave:
             self.clave_var.set(clave)
@@ -175,26 +283,81 @@ class RestoreApp(tk.Toplevel):
             return
 
         try:
+            # Mostrar ventana de progreso
+            progress = tk.Toplevel(self)
+            progress.title("Progreso de Restauración")
+            progress.geometry("400x200")
+            
+            tk.Label(progress, text="Restaurando respaldo...", font=('Arial', 12)).pack(pady=10)
+            progress_text = tk.Text(progress, height=8, wrap=tk.WORD)
+            progress_text.pack(fill=tk.BOTH, expand=True, padx=10, pady=5)
+            progress.update()
+            
+            old_stdout = sys.stdout
+            sys.stdout = StringIO()
+            
+            # Ejecutar restauración
             restaurar_respaldo(origen, destino, clave_path=clave, es_fragmentado=fragmentado)
+            
+            # Obtener output y restaurar stdout
+            output = sys.stdout.getvalue()
+            sys.stdout = old_stdout
+            
+            # Mostrar output en la ventana
+            progress_text.insert(tk.END, output)
+            progress_text.see(tk.END)
+            
+            # Botón para cerrar
+            tk.Button(progress, text="Cerrar", command=progress.destroy).pack(pady=5)
+            
             messagebox.showinfo("Éxito", "¡Restauración completada con éxito!")
+            
         except Exception as e:
-            messagebox.showerror("Error", f"Falló la restauración:\n{str(e)}")
-
+            # Mostrar error detallado
+            error_msg = f"""
+            Error durante la restauración:
+            
+            {str(e)}
+            
+            Posibles causas:
+            - La clave de encriptación no es correcta
+            - Los archivos están corruptos
+            - No hay permisos suficientes
+            - Espacio insuficiente en disco
+            """
+            messagebox.showerror("Error en Restauración", error_msg)
 
 def ejecutar_gui():
     root = tk.Tk()
-    root.title("Sistema de respaldo y restauración")
-    root.geometry("300x150")
+    root.title("Sistema de Respaldo")
+    root.geometry("300x200")
+    root.resizable(False, False)
 
-    def abrir_backup():
-        backup_window = BackupApp(root)
-        backup_window.wait_window()  # Espera hasta que se cierre la ventana
+    # Estilo
+    style = ttk.Style()
+    style.configure('TButton', font=('Arial', 10), padding=10)
 
-    def abrir_restore():
-        restore_window = RestoreApp(root)
-        restore_window.wait_window()  # Espera hasta que se cierre la ventana
+    # Frame principal
+    main_frame = ttk.Frame(root, padding="20")
+    main_frame.pack(fill=tk.BOTH, expand=True)
 
-    tk.Button(root, text="Crear Respaldo", command=abrir_backup, bg="green", fg="white", width=20).pack(pady=10)
-    tk.Button(root, text="Restaurar Respaldo", command=abrir_restore, bg="blue", fg="white", width=20).pack(pady=10)
+    # Botones principales
+    ttk.Button(
+        main_frame,
+        text="Crear Respaldo",
+        command=lambda: BackupApp(root),
+        style='TButton'
+    ).pack(fill=tk.X, pady=10)
+
+    ttk.Button(
+        main_frame,
+        text="Restaurar Respaldo",
+        command=lambda: RestoreApp(root),
+        style='TButton'
+    ).pack(fill=tk.X, pady=10)
 
     root.mainloop()
+
+
+if __name__ == "__main__":
+    ejecutar_gui()

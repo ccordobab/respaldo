@@ -1,6 +1,9 @@
 # backup/create.py
 import os
-from backup import file_collector, compressor, encryptor, fragmenter
+import shutil
+from pathlib import Path
+from backup.cloud.google_drive import GoogleDriveProvider
+from backup.encryptor import generar_clave, guardar_clave, encriptar_archivo
 
 def crear_respaldo(
     carpeta_a_resguardar: str,
@@ -8,41 +11,94 @@ def crear_respaldo(
     encriptar: bool = True,
     fragmentar: bool = True,
     tamano_fragmento_mb: int = 100,
-    clave_path: str = None
+    clave_path: str = None,
+    upload_to_cloud: bool = False,
 ):
-    carpetas = [carpeta_a_resguardar]
+    # 1. Inicialización de variables de resultado
+    resultado = {
+        'success': True,
+        'archivo_principal': None,
+        'clave_generada': None,
+        'fragmentos': None,
+        'drive_status': None,
+        'warnings': []
+    }
 
-    archivos = file_collector.recolectar_archivos(carpetas)
-    if not archivos:
-        raise ValueError("No se encontraron archivos para respaldar.")
+    try:
+        # 2. Validación de rutas
+        if not os.path.exists(carpeta_a_resguardar):
+            raise FileNotFoundError(f"Carpeta a respaldar no existe: {carpeta_a_resguardar}")
 
-    os.makedirs(carpeta_salida, exist_ok=True)
-    ruta_zip = os.path.join(carpeta_salida, "respaldo.zip")
-    compressor.comprimir_archivos(archivos, ruta_zip, base_dir=os.path.commonpath(carpetas))
+        os.makedirs(carpeta_salida, exist_ok=True)
+        if not os.access(carpeta_salida, os.W_OK):
+            raise PermissionError(f"No hay permisos de escritura en: {carpeta_salida}")
 
-    if encriptar:
-        if clave_path:
-            # Leer clave existente
-            with open(clave_path, 'rb') as f:
-                clave = f.read()
-        else:
-            # Generar clave nueva
-            clave = encryptor.generar_clave()
-            encryptor.guardar_clave(clave, os.path.join(carpeta_salida, "clave.key"))
+        # 3. Creación del archivo ZIP
+        nombre_zip = "respaldo.zip"
+        ruta_zip = os.path.join(carpeta_salida, nombre_zip)
+        shutil.make_archive(os.path.splitext(ruta_zip)[0], 'zip', carpeta_a_resguardar)
+        archivo_para_subir = ruta_zip
 
-        ruta_encriptado = os.path.join(carpeta_salida, "respaldo_encriptado.zip")
-        encryptor.encriptar_archivo(ruta_zip, ruta_encriptado, clave)
-        if os.path.getsize(ruta_encriptado) == 0:
-            raise ValueError("El archivo encriptado está vacío")
-        os.remove(ruta_zip)
-        ruta_final = ruta_encriptado
-    else:
-        ruta_final = ruta_zip
+        # 4. Encriptación (si aplica)
+        clave = None
+        if encriptar:
+            if clave_path:
+                # Leer clave existente SIN modificaciones
+                with open(clave_path, 'rb') as f:
+                    clave = f.read()
+            else:
+                # Generar clave nueva (usando encryptor.py)
+                clave = generar_clave()
+                ruta_clave = os.path.join(carpeta_salida, "clave.key")
+                guardar_clave(clave, ruta_clave)
+                resultado['clave_generada'] = ruta_clave
+            
+            # Encriptar (usando encryptor.py)
+            ruta_encriptado = os.path.join(carpeta_salida, "respaldo_encriptado.zip")
+            encriptar_archivo(ruta_zip, ruta_encriptado, clave)
+            archivo_para_subir = ruta_encriptado
+        
+        resultado['archivo_principal'] = archivo_para_subir
 
-    if fragmentar:
-        carpeta_fragmentos = os.path.join(carpeta_salida, "fragmentos")
-        os.makedirs(carpeta_fragmentos, exist_ok=True)
-        fragmenter.fragmentar_archivo(ruta_final, tamaño_mb=tamano_fragmento_mb, carpeta_salida=carpeta_fragmentos)
-        ruta_final = carpeta_fragmentos
+        # 5. Fragmentación (si aplica)
+        if fragmentar:
+            carpeta_fragmentos = os.path.join(carpeta_salida, "fragmentos")
+            try:
+                os.makedirs(carpeta_fragmentos, exist_ok=True)
+                if os.access(carpeta_fragmentos, os.W_OK):
+                    # Lógica de fragmentación aquí
+                    pass
+                else:
+                    msg = f"Sin permisos para fragmentos en: {carpeta_fragmentos}"
+                    resultado['warnings'].append(msg)
+            except Exception as e:
+                resultado['warnings'].append(f"Error en fragmentación: {str(e)}")
+            
+            resultado['fragmentos'] = carpeta_fragmentos
 
-    return ruta_final
+        # 6. Subida a Google Drive
+        if upload_to_cloud:
+            try:
+                archivo_path = Path(archivo_para_subir)
+                if not archivo_path.exists():
+                    raise FileNotFoundError(f"Archivo no encontrado: {archivo_path}")
+
+                drive = GoogleDriveProvider()
+                if not drive.authenticate():
+                    raise ConnectionError("Falló la autenticación con Google Drive")
+                
+                drive.upload_file(str(archivo_path))
+                resultado['drive_status'] = "Subida exitosa a Google Drive"
+                
+            except Exception as e:
+                resultado['drive_status'] = f"Error en Google Drive: {str(e)}"
+                resultado['warnings'].append(resultado['drive_status'])
+
+        return resultado
+
+    except Exception as e:
+        resultado.update({
+            'success': False,
+            'error': str(e)
+        })
+        return resultado

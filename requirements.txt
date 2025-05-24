@@ -13,3 +13,8 @@ psutil==5.9.5         # Para monitoreo de recursos
 pytest==7.4.0         # Para testing
 black==23.7.0         # Para formateo de código
 flake8==6.0.0         # Para linting
+
+# Google Drive API
+google-auth>=2.20.0
+google-auth-oauthlib>=1.0.0
+google-api-python-client>=2.100.0

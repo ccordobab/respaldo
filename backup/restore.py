@@ -1,98 +1,161 @@
 # backup/restore.py
 import os
 import zipfile
+import hashlib
 from pathlib import Path
 from cryptography.fernet import Fernet, InvalidToken
 
-def desencriptar_archivo(archivo_encriptado, archivo_salida, clave_path):
-    """Versión mejorada de desencriptación"""
-    # Verificaciones iniciales
-    if not os.path.exists(archivo_encriptado):
-        raise FileNotFoundError(f"Archivo encriptado no encontrado: {archivo_encriptado}")
-    if os.path.getsize(archivo_encriptado) == 0:
-        raise ValueError("El archivo encriptado está vacío")
-    if not os.path.exists(clave_path):
-        raise FileNotFoundError(f"Archivo clave no encontrado: {clave_path}")
+def verificar_archivo_encriptado(ruta):
+    """Verifica integridad básica del archivo encriptado"""
+    size = os.path.getsize(ruta)
+    if size < 16:
+        raise ValueError(f"Archivo encriptado corrupto (tamaño: {size} bytes)")
+    with open(ruta, 'rb') as f:
+        header = f.read(5)
+        if header != b'gAAAA':
+            raise ValueError("Encabezado encriptado inválido (¿archivo corrupto?)")
 
-    # Leer clave
-    with open(clave_path, 'rb') as f:
-        clave = f.read()
-
-    # Desencriptar en bloques
-    fernet = Fernet(clave)
+def normalizar_clave(clave_bytes):
+    """Normaliza la clave eliminando caracteres problemáticos"""
+    # Primero intentamos decodificar a UTF-8
     try:
+        clave_str = clave_bytes.decode('utf-8').strip()
+        # Eliminamos todos los whitespaces (incluyendo \r, \n, etc.)
+        clave_str = ''.join(clave_str.split())
+        return clave_str.encode('utf-8')
+    except UnicodeDecodeError:
+        # Si no es UTF-8 válido, devolvemos los bytes originales limpios
+        return clave_bytes.strip()
+    
+def desencriptar_archivo(archivo_encriptado, archivo_salida, clave_path):
+    """Versión corregida que coincide con el método de encriptación original"""
+    try:
+        # Verificaciones iniciales
+        if not os.path.exists(archivo_encriptado):
+            raise FileNotFoundError(f"Archivo encriptado no encontrado: {archivo_encriptado}")
+        
+        if os.path.getsize(archivo_encriptado) == 0:
+            raise ValueError("El archivo encriptado está vacío")
+
+        # Leer clave SIN normalización (para mantener compatibilidad)
+        with open(clave_path, 'rb') as f:
+            clave = f.read().strip()  # Solo strip() básico
+            
+            # Verificación mínima de clave
+            if len(clave) != 44:
+                raise ValueError("La clave debe tener exactamente 44 caracteres (formato Fernet)")
+
+        fernet = Fernet(clave)
+        
+        # Desencriptar en bloques (mismo tamaño que en encryptor.py)
         with open(archivo_encriptado, 'rb') as f_in, open(archivo_salida, 'wb') as f_out:
             while True:
-                chunk = f_in.read(64 * 1024 + 64)  # Tamaño ajustado para chunks encriptados
+                chunk = f_in.read(64 * 1024)  # 64KB chunks (igual que en encriptación)
                 if not chunk:
                     break
-                f_out.write(fernet.decrypt(chunk))
-        
+                try:
+                    f_out.write(fernet.decrypt(chunk))
+                except InvalidToken:
+                    raise ValueError("Clave incorrecta o archivo corrupto - no se pudo desencriptar")
+
         # Verificación final
         if os.path.getsize(archivo_salida) == 0:
             os.remove(archivo_salida)
-            raise ValueError("El archivo desencriptado está vacío - verifique la clave")
-    
+            raise ValueError("El archivo desencriptado está vacío")
+
     except Exception as e:
         if os.path.exists(archivo_salida):
             os.remove(archivo_salida)
         raise
 
 def recombinar_fragmentos(carpeta_fragmentos: str, archivo_salida: str):
-    """Combina fragmentos .bin en un archivo completo"""
+    """Combina fragmentos .bin en un archivo completo con validación"""
     fragmentos = sorted(Path(carpeta_fragmentos).glob("*.bin"))
     if not fragmentos:
         raise ValueError("No se encontraron fragmentos .bin en la carpeta")
     
-    # Validar tamaño de fragmentos
+    # Validación de fragmentos
     for f in fragmentos:
         if f.stat().st_size == 0:
-            raise ValueError(f"El fragmento {f.name} está vacío.")
+            raise ValueError(f"Fragmento vacío: {f.name}")
+        if f.stat().st_size > 200 * 1024 * 1024:  # 200MB máximo por fragmento
+            raise ValueError(f"Fragmento demasiado grande: {f.name}")
 
+    # Combinación con progreso
     with open(archivo_salida, 'wb') as output:
-        for fragmento in fragmentos:
+        for i, fragmento in enumerate(fragmentos, 1):
+            print(f"Procesando fragmento {i}/{len(fragmentos)}: {fragmento.name}")
             with open(fragmento, 'rb') as f:
                 output.write(f.read())
 
-
 def descomprimir_archivo(archivo_comprimido, carpeta_destino):
-    """Extrae archivos ZIP verificando integridad"""
+    """Extrae archivos ZIP con verificación de integridad"""
     if not zipfile.is_zipfile(archivo_comprimido):
         raise ValueError("El archivo no es un ZIP válido")
     
     with zipfile.ZipFile(archivo_comprimido, 'r') as zip_ref:
-        # Verificar integridad
-        if zip_ref.testzip() is not None:
-            raise ValueError("Archivo ZIP corrupto")
-        zip_ref.extractall(carpeta_destino)
+        # Verificación de integridad
+        archivo_corrupto = zip_ref.testzip()
+        if archivo_corrupto is not None:
+            raise ValueError(f"Archivo ZIP corrupto (archivo afectado: {archivo_corrupto})")
+        
+        # Extracción con manejo de rutas seguras
+        for file in zip_ref.namelist():
+            zip_ref.extract(file, carpeta_destino)
 
 def restaurar_respaldo(origen: str, destino: str, clave_path: str = None, es_fragmentado: bool = False):
+    archivo_temp = None
+    archivo_desencriptado = None
+    
     try:
+        # 1. Validación inicial
+        if not os.path.exists(origen):
+            raise FileNotFoundError(f"Ruta de origen no existe: {origen}")
+        
+        if not os.path.exists(destino):
+            os.makedirs(destino, exist_ok=True)
+        
+        # 2. Manejo de fragmentos
         if es_fragmentado:
+            if not os.path.isdir(origen):
+                raise ValueError("Para restauración fragmentada, el origen debe ser una carpeta")
+            
             archivo_temp = os.path.join(os.path.dirname(origen), "temp_restore.zip")
-            print(f"Recombinando fragmentos en: {archivo_temp}")
+            print(f"\n[1/3] Recombinando {len(list(Path(origen).glob('*.bin')))} fragmentos...")
             recombinar_fragmentos(origen, archivo_temp)
-            print(f"Archivo recombinado tamaño: {os.path.getsize(archivo_temp)} bytes")
             origen = archivo_temp
-        else:
-            archivo_temp = None
 
+        # 3. Desencriptación
         if clave_path:
             archivo_desencriptado = origen + ".decrypted"
-            print(f"Desencriptando archivo {origen} a {archivo_desencriptado}")
+            print(f"\n[2/3] Desencriptando archivo...")
             desencriptar_archivo(origen, archivo_desencriptado, clave_path)
-            print(f"Archivo desencriptado tamaño: {os.path.getsize(archivo_desencriptado)} bytes")
             origen = archivo_desencriptado
-        else:
-            archivo_desencriptado = None
 
-        print(f"Descomprimiendo archivo {origen} en {destino}")
+        # 4. Descompresión
+        print(f"\n[3/3] Descomprimiendo en {destino}...")
         descomprimir_archivo(origen, destino)
+        print("\n✅ Restauración completada con éxito")
 
     except Exception as e:
-        print(f"[ERROR] {e}")  
-        if 'archivo_temp' in locals() and archivo_temp and os.path.exists(archivo_temp):
-            os.remove(archivo_temp)
-        if 'archivo_desencriptado' in locals() and archivo_desencriptado and os.path.exists(archivo_desencriptado):
-            os.remove(archivo_desencriptado)
-        raise
+        # Manejo detallado de errores
+        error_msg = f"""
+        ERROR EN RESTAURACIÓN:
+        Tipo: {type(e).__name__}
+        Mensaje: {str(e)}
+        Origen: {origen}
+        Destino: {destino}
+        Clave: {'Sí' if clave_path else 'No'}
+        Fragmentado: {'Sí' if es_fragmentado else 'No'}
+        """
+        raise RuntimeError(error_msg) from e
+
+    finally:
+        # Limpieza de archivos temporales
+        for temp_file in [archivo_temp, archivo_desencriptado]:
+            if temp_file and os.path.exists(temp_file):
+                try:
+                    os.remove(temp_file)
+                    print(f"Archivo temporal eliminado: {temp_file}")
+                except Exception as e:
+                    print(f"Advertencia: No se pudo eliminar {temp_file}: {str(e)}")

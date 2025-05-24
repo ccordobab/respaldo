@@ -29,3 +29,7 @@ venv.bak/
 
 # Byte-compiled / optimized files
 *.pyc
+
+
+config/credentials.json
+config/token.json
