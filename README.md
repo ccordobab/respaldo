@@ -88,3 +88,9 @@ The system integrates with Google Drive for cloud backup storage using the offic
 - Enable Google Drive API in Google Cloud Console
 - Configure OAuth consent screen
 - Download credentials.json to your project's secure config directory
+
+### Team Members
+This project was made by Paulina Cerón, Camilo Córdoba and Sara Valentina Cortes.
+
+You can find the explanatory video [HERE](https://eafit-my.sharepoint.com/:v:/g/personal/pceronm_eafit_edu_co/EZBvRZwr0ApEuAl-XLwknbUBLbwQTF39aGMYifFNp0ZYKg?e=h3C3ZG&nav=eyJyZWZlcnJhbEluZm8iOnsicmVmZXJyYWxBcHAiOiJTdHJlYW1XZWJBcHAiLCJyZWZlcnJhbFZpZXciOiJTaGFyZURpYWxvZy1MaW5rIiwicmVmZXJyYWxBcHBQbGF0Zm9ybSI6IldlYiIsInJlZmVycmFsTW9kZSI6InZpZXcifX0%3D)
+
