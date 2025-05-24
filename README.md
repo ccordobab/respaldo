@@ -47,6 +47,7 @@ Python was chosen for this project because it offers:
 - Rich ecosystem: Libraries like Tkinter, Dask, zipfile, and cryptography simplify GUI development, parallel processing, compression, and encryption.
 - Rapid development: Python’s clear syntax and dynamic typing allow for fast prototyping and easy maintenance.
 - Strong community: Extensive documentation and community support make it easier to solve problems and extend functionality.
+
 Overall, Python enables quick development of robust, user-friendly backup tools with advanced features. Also, it was an opportunity to expand the knowledge on python tools.
 
 ## Parallel Processing with Dask
@@ -113,6 +114,7 @@ The application allows users to choose a specific disk drive (such as C: or D:\)
 1. Detects all available drives on the system using Windows APIs.
 2. Displays a list of drives in a popup window.
 3. The user selects a drive, and its path is automatically set as the backup destination.
+
 This feature makes it easy to save backups directly to external drives, USB sticks, or other partitions, improving flexibility and data safety.
 
 ## Team Members
