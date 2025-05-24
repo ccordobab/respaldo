@@ -11,6 +11,8 @@ from googleapiclient.http import MediaFileUpload
 from pathlib import Path
 import sys
 from io import StringIO
+import ctypes
+import string
 
 class BackupApp(tk.Toplevel):
     def __init__(self, parent):
@@ -47,7 +49,8 @@ class BackupApp(tk.Toplevel):
         tk.Label(main_frame, text="Carpeta destino:").grid(row=1, column=0, sticky="w", pady=5)
         tk.Entry(main_frame, textvariable=self.destino_var, width=50).grid(row=1, column=1, sticky="ew", padx=5)
         tk.Button(main_frame, text="Seleccionar...", command=self.elegir_destino).grid(row=1, column=2, padx=5)
-
+        tk.Button(main_frame, text="Seleccionar disco...", command=self.elegir_disco).grid(row=1, column=3, padx=5)
+        
         # Clave (opcional)
         tk.Label(main_frame, text="Archivo de clave:").grid(row=2, column=0, sticky="w", pady=5)
         tk.Entry(main_frame, textvariable=self.clave_var, width=50).grid(row=2, column=1, sticky="ew", padx=5)
@@ -115,6 +118,31 @@ class BackupApp(tk.Toplevel):
 
     def open_cloud_auth(self):
         CloudAuthWindow(self)
+
+    def elegir_disco(self):
+        # Lista las unidades disponibles en Windows
+        drives = []
+        bitmask = ctypes.windll.kernel32.GetLogicalDrives()
+        for letter in string.ascii_uppercase:
+            if bitmask & 1:
+                drives.append(f"{letter}:\\")
+            bitmask >>= 1
+
+        # Ventana para seleccionar disco
+        disco_win = tk.Toplevel(self)
+        disco_win.title("Seleccionar disco")
+        tk.Label(disco_win, text="Selecciona un disco duro:").pack(padx=10, pady=10)
+        for drive in drives:
+            tk.Button(
+                disco_win,
+                text=drive,
+                width=10,
+                command=lambda d=drive: self.set_destino_disco(d, disco_win)
+            ).pack(padx=10, pady=2)
+    
+    def set_destino_disco(self, drive, win):
+        self.destino_var.set(drive)
+        win.destroy()
 
     def crear_respaldo(self):  # Este es el método de la clase
         origen = self.origen_var.get()
