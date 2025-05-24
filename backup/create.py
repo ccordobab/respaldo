@@ -4,6 +4,7 @@ import shutil
 from pathlib import Path
 from backup.cloud.google_drive import GoogleDriveProvider
 from backup.encryptor import generar_clave, guardar_clave, encriptar_archivo
+from backup.fragmenter import fragmentar_archivo 
 
 def crear_respaldo(
     carpeta_a_resguardar: str,
@@ -66,15 +67,15 @@ def crear_respaldo(
             try:
                 os.makedirs(carpeta_fragmentos, exist_ok=True)
                 if os.access(carpeta_fragmentos, os.W_OK):
-                    # Lógica de fragmentación aquí
-                    pass
+                    # Usamos la función original de fragmentación
+                    fragmentar_archivo(archivo_para_subir, tamano_fragmento_mb, carpeta_fragmentos)
+                    resultado['fragmentos'] = [os.path.join(carpeta_fragmentos, f) 
+                                             for f in os.listdir(carpeta_fragmentos)]
                 else:
                     msg = f"Sin permisos para fragmentos en: {carpeta_fragmentos}"
                     resultado['warnings'].append(msg)
             except Exception as e:
                 resultado['warnings'].append(f"Error en fragmentación: {str(e)}")
-            
-            resultado['fragmentos'] = carpeta_fragmentos
 
         # 6. Subida a Google Drive
         if upload_to_cloud:

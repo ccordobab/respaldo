@@ -69,22 +69,14 @@ def desencriptar_archivo(archivo_encriptado, archivo_salida, clave_path):
         raise
 
 def recombinar_fragmentos(carpeta_fragmentos: str, archivo_salida: str):
-    """Combina fragmentos .bin en un archivo completo con validación"""
-    fragmentos = sorted(Path(carpeta_fragmentos).glob("*.bin"))
+    """Combina fragmentos .bin en un archivo completo"""
+    fragmentos = sorted(Path(carpeta_fragmentos).glob("parte_*.bin"))  # Cambiado para coincidir con tu formato
+    
     if not fragmentos:
         raise ValueError("No se encontraron fragmentos .bin en la carpeta")
     
-    # Validación de fragmentos
-    for f in fragmentos:
-        if f.stat().st_size == 0:
-            raise ValueError(f"Fragmento vacío: {f.name}")
-        if f.stat().st_size > 200 * 1024 * 1024:  # 200MB máximo por fragmento
-            raise ValueError(f"Fragmento demasiado grande: {f.name}")
-
-    # Combinación con progreso
     with open(archivo_salida, 'wb') as output:
-        for i, fragmento in enumerate(fragmentos, 1):
-            print(f"Procesando fragmento {i}/{len(fragmentos)}: {fragmento.name}")
+        for fragmento in fragmentos:
             with open(fragmento, 'rb') as f:
                 output.write(f.read())
 
